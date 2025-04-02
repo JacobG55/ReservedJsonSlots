@@ -3,31 +3,38 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using JsonReservedSlots.JsonTypes;
+using JsonReservedSlots.Keybinds;
 using Newtonsoft.Json;
 using ReservedItemSlotCore.Data;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace JsonReservedSlots
 {
     [BepInPlugin(modGUID, modName, modVersion)]
     [BepInDependency("FlipMods.ReservedItemSlotCore")]
+    [BepInDependency("com.rune580.LethalCompanyInputUtils")]
     public class JsonReservedSlotsCore : BaseUnityPlugin
     {
         private const string modGUID = "JacobG5.JsonReservedSlots";
         private const string modName = "JsonReservedSlots";
-        private const string modVersion = "1.0.0";
+        private const string modVersion = "1.1.0";
 
-        private readonly Harmony harmony = new Harmony(modGUID);
+        private readonly Harmony harmony = new(modGUID);
 
         public static JsonReservedSlotsCore Instance;
 
         public ManualLogSource mls;
 
-        public static ConfigEntry<bool> createDefaults;
+        public ConfigEntry<bool> createDefaults;
 
-        public readonly string JsonReservedSlotsPath = $"{BepInEx.Paths.ConfigPath}\\JsonReservedSlots";
+        public readonly string JsonReservedSlotsPath = Path.Combine(Paths.ConfigPath, "JsonReservedSlots");
+
+        public readonly List<ReservedSlotInfo> reservedSlotInfos = new();
+
+        private ReservedJsonKeybinds jsonKeybinds;
 
         void Awake()
         {
@@ -70,7 +77,7 @@ namespace JsonReservedSlots
                 return;
             }
 
-            ReservedSlotInfo toolBagInfo = new() { reservedSlotName = "utility_belt", itemsForSlot = [ new ReservedItemInfo() { itemName = "Belt bag" }] };
+            ReservedSlotInfo toolBagInfo = new() { reservedSlotName = "utility_belt", slotPriority = 50, purchasePrice = 150, itemsForSlot = [ new ReservedItemInfo() { itemName = "Belt bag" }] };
 
             string toolBagJson = JsonConvert.SerializeObject(toolBagInfo, Formatting.Indented);
 
@@ -79,20 +86,25 @@ namespace JsonReservedSlots
 
         public void ReadJsonSlots()
         {
-            List<ReservedSlotInfo> reservedSlots = new();
-
             try
             {
                 foreach (string file in Directory.GetFiles(JsonReservedSlotsPath))
                 {
-                    mls.LogInfo($"{file}");
-
                     if (file.EndsWith(".json"))
                     {
+                        mls.LogInfo($"Reading {Path.GetFileName(file)}");
                         ReservedSlotInfo? slotInfo = JsonConvert.DeserializeObject<ReservedSlotInfo>(File.ReadAllText(file));
                         if (slotInfo != null)
                         {
-                            reservedSlots.Add(slotInfo);
+                            if (slotInfo.reservedSlotName.IsNullOrWhiteSpace()) continue;
+                            if (slotInfo.displayName.IsNullOrWhiteSpace()) slotInfo.displayName = Path.GetFileNameWithoutExtension(file);
+                            slotInfo.reservedSlotName = new string(slotInfo.reservedSlotName.ToLower().Replace(' ', '_'));
+
+                            var itemInfos = slotInfo.itemsForSlot.ToList();
+                            itemInfos.RemoveAll((itemInfo) => itemInfo.itemName.IsNullOrWhiteSpace());
+                            slotInfo.itemsForSlot = itemInfos.ToArray();
+
+                            reservedSlotInfos.Add(slotInfo);
                         }
                         else
                         {
@@ -106,15 +118,11 @@ namespace JsonReservedSlots
                 mls.LogWarning($"Something went wrong reading JSON files!\n{e}");
             }
 
-            foreach (ReservedSlotInfo slotInfo in reservedSlots)
+            foreach (ReservedSlotInfo slotInfo in reservedSlotInfos)
             {
                 ReservedItemSlotData slotData = ReservedItemSlotData.CreateReservedItemSlotData(slotInfo.reservedSlotName, slotInfo.slotPriority, slotInfo.purchasePrice);
-
-                mls.LogInfo($"{slotInfo.itemsForSlot.Length}");
-
                 for (int i = 0; i < slotInfo.itemsForSlot.Length; i++)
                 {
-                    mls.LogInfo($"{slotInfo.itemsForSlot[i].bone}");
                     if (slotInfo.itemsForSlot[i].bone == PlayerBone.None)
                     {
                         slotData.AddItemToReservedItemSlot(new ReservedItemData(slotInfo.itemsForSlot[i].itemName));
@@ -125,6 +133,9 @@ namespace JsonReservedSlots
                     }
                 }
             }
+
+            jsonKeybinds = new ReservedJsonKeybinds();
+            jsonKeybinds.BindKeys();
         }
     }
 }

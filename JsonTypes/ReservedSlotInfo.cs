@@ -1,16 +1,26 @@
-﻿using ReservedItemSlotCore.Data;
+﻿using Newtonsoft.Json;
+using ReservedItemSlotCore.Data;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace JsonReservedSlots.JsonTypes
 {
     public class ReservedSlotInfo
     {
+        [JsonIgnore] public ReservedItemSlotData slotData;
         public string reservedSlotName;
+        public string displayName = "";
 
         public int slotPriority = 500;
         public int purchasePrice = 120;
 
         public ReservedItemInfo[] itemsForSlot;
+
+        [JsonIgnore] public InputAction useKeybindAction;
+        public ReservedKeybindInfo? useKeybind = null;
+
+        [JsonIgnore] public InputAction equipKeybindAction;
+        public ReservedKeybindInfo? equipKeybind = null;
     }
 
     public class ReservedItemInfo
@@ -31,5 +41,12 @@ namespace JsonReservedSlots.JsonTypes
         {
             return new Vector3 (x, y, z);
         }
+    }
+
+    public class ReservedKeybindInfo
+    {
+        public string defaultBind = "";
+        public bool toggle = false;
+        public bool repocket = false;
     }
 }
