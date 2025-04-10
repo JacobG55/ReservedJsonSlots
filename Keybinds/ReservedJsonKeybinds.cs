@@ -14,7 +14,7 @@ namespace JsonReservedSlots.Keybinds
     {
         public override void CreateInputActions(in InputActionMapBuilder builder)
         {
-            foreach (ReservedSlotInfo slotInfo in JsonReservedSlotsCore.Instance.reservedSlotInfos)
+            foreach (ReservedSlotInfo slotInfo in JsonReservedSlotsCore.reservedSlotInfos)
             {
                 if (slotInfo.useKeybind != null)
                 {
@@ -29,7 +29,7 @@ namespace JsonReservedSlots.Keybinds
 
         public void BindKeys()
         {
-            foreach (ReservedSlotInfo slotInfo in JsonReservedSlotsCore.Instance.reservedSlotInfos)
+            foreach (ReservedSlotInfo slotInfo in JsonReservedSlotsCore.reservedSlotInfos)
             {
                 if (slotInfo.useKeybind != null)
                 {
@@ -65,7 +65,7 @@ namespace JsonReservedSlots.Keybinds
         private void Bind(InputActionMapBuilder builder, string name, ReservedSlotInfo slotInfo, ReservedKeybindInfo bindInfo)
         {
             string id = GetBindId(slotInfo, name);
-            JsonReservedSlotsCore.Instance.mls.LogInfo($"Creating {name} Keybind for {slotInfo.displayName} (ID: {id})");
+            JsonReservedSlotsCore.mls.LogInfo($"Creating {name} Keybind for {slotInfo.displayName} (ID: {id})");
             var useBind = builder.NewActionBinding();
             useBind.WithActionId(id).WithActionType(InputActionType.Button).WithBindingName($"{name} {slotInfo.displayName}");
 
@@ -78,22 +78,22 @@ namespace JsonReservedSlots.Keybinds
         private string GetBindId(ReservedSlotInfo slotInfo, string name) => $"reserved_json_{slotInfo.reservedSlotName}_{name.ToLower()}";
 
         private static bool KeybindsDisabled(PlayerControllerB localPlayer)
-            => localPlayer == null || !localPlayer || !localPlayer.isPlayerControlled || (localPlayer.IsServer && !localPlayer.isHostPlayerObject) || localPlayer.isTypingChat || localPlayer.quickMenuManager.isMenuOpen 
+            => localPlayer == null || !localPlayer || !localPlayer.isPlayerControlled || (localPlayer.IsServer && !localPlayer.isHostPlayerObject) || localPlayer.isTypingChat || localPlayer.inTerminalMenu || localPlayer.quickMenuManager.isMenuOpen 
             || localPlayer.isPlayerDead || ShipBuildModeManager.Instance.InBuildMode || ReservedPlayerData.localPlayerData.timeSinceSwitchingSlots < 0.08f;
 
         public static GrabbableObject? GetActiveOrSlotItem(PlayerControllerB player, ReservedSlotInfo slotInfo)
         {
-            GrabbableObject? item = player.currentlyHeldObjectServer;
+            if (player.currentlyHeldObjectServer != null && IsForSlot(slotInfo, player.currentlyHeldObjectServer)) return player.currentlyHeldObjectServer;
 
-            if (item != null && item.itemProperties != null)
+            GrabbableObject? slotItem = GetSlotItem(player, slotInfo);
+            if (slotItem != null) return slotItem;
+
+            foreach (GrabbableObject item in player.ItemSlots)
             {
-                foreach (ReservedItemInfo itemInfo in slotInfo.itemsForSlot)
-                {
-                    if (item.itemProperties.itemName.Equals(itemInfo.itemName, StringComparison.InvariantCultureIgnoreCase)) return item;
-                }
+                if (item != null && IsForSlot(slotInfo, item)) return item;
             }
 
-            return GetSlotItem(player, slotInfo);
+            return null;
         }
 
         public static GrabbableObject? GetSlotItem(PlayerControllerB player, ReservedSlotInfo slotInfo)
@@ -103,6 +103,16 @@ namespace JsonReservedSlots.Keybinds
                 return playerData.GetReservedItem(itemSlot);
             }
             return null;
+        }
+
+        private static bool IsForSlot(ReservedSlotInfo slotInfo, GrabbableObject item)
+        {
+            if (item.itemProperties == null) return false;
+            foreach (ReservedItemInfo itemInfo in slotInfo.itemsForSlot)
+            {
+                if (item.itemProperties.itemName.Equals(itemInfo.itemName, StringComparison.InvariantCultureIgnoreCase)) return true;
+            }
+            return false;
         }
 
         private static void ActivateUse(ReservedSlotInfo slotInfo, InputAction.CallbackContext context, bool active)
@@ -137,7 +147,7 @@ namespace JsonReservedSlots.Keybinds
 
             item.UseItemOnClient(active);
             Traverse.Create(player).Field("timeSinceSwitchingSlots").SetValue(0);
-            if (slotInfo.useKeybind != null && slotInfo.useKeybind.repocket) item.PocketItem();
+            if (slotInfo.useKeybind != null && slotInfo.useKeybind.repocket && item != player.currentlyHeldObjectServer) item.PocketItem();
         }
 
         private static void ToggleEquip(ReservedSlotInfo slotInfo, InputAction.CallbackContext context, bool performed = true)

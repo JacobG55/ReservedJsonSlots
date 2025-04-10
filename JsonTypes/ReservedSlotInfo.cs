@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using ReservedItemSlotCore.Data;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -21,11 +22,14 @@ namespace JsonReservedSlots.JsonTypes
 
         [JsonIgnore] public InputAction equipKeybindAction;
         public ReservedKeybindInfo? equipKeybind = null;
+
+        public string[] requiredMods = [];
     }
 
     public class ReservedItemInfo
     {
         public string itemName;
+        [JsonConverter(typeof(StringEnumConverter))] 
         public PlayerBone bone = PlayerBone.None;
         public ReservedVector position = new();
         public ReservedVector rotation = new();
@@ -37,10 +41,7 @@ namespace JsonReservedSlots.JsonTypes
         public float y = 0;
         public float z = 0;
 
-        public Vector3 GetUnityVector()
-        {
-            return new Vector3 (x, y, z);
-        }
+        public Vector3 GetUnityVector() => new(x, y, z);
     }
 
     public class ReservedKeybindInfo

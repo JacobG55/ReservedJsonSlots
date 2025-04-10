@@ -2,6 +2,7 @@
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using JLL.API;
 using JsonReservedSlots.JsonTypes;
 using JsonReservedSlots.Keybinds;
 using Newtonsoft.Json;
@@ -16,36 +17,30 @@ namespace JsonReservedSlots
     [BepInPlugin(modGUID, modName, modVersion)]
     [BepInDependency("FlipMods.ReservedItemSlotCore")]
     [BepInDependency("com.rune580.LethalCompanyInputUtils")]
+    [BepInDependency("JacobG5.JLL")]
     public class JsonReservedSlotsCore : BaseUnityPlugin
     {
         private const string modGUID = "JacobG5.JsonReservedSlots";
         private const string modName = "JsonReservedSlots";
-        private const string modVersion = "1.1.0";
+        private const string modVersion = "1.2.0";
 
         private readonly Harmony harmony = new(modGUID);
 
-        public static JsonReservedSlotsCore Instance;
-
-        public ManualLogSource mls;
+        public static ManualLogSource mls;
 
         public ConfigEntry<bool> createDefaults;
 
-        public readonly string JsonReservedSlotsPath = Path.Combine(Paths.ConfigPath, "JsonReservedSlots");
+        public static readonly string JsonReservedSlotsPath = Path.Combine(Paths.ConfigPath, "JsonReservedSlots");
 
-        public readonly List<ReservedSlotInfo> reservedSlotInfos = new();
+        private static bool loadedJsons = false;
 
-        private ReservedJsonKeybinds jsonKeybinds;
+        public static readonly List<ReservedSlotInfo> reservedSlotInfos = new();
+
+        private static ReservedJsonKeybinds jsonKeybinds;
 
         void Awake()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-            }
-
             mls = BepInEx.Logging.Logger.CreateLogSource(modGUID);
-
-            mls.LogInfo(JsonReservedSlotsPath);
 
             createDefaults = Config.Bind("Core", "CreateDefaults", true, "Creates an example reserved slot json for Belt bags when directory doesn't exist.");
 
@@ -55,8 +50,7 @@ namespace JsonReservedSlots
                 CreateDefaultJsonSlots();
             }
 
-            mls.LogInfo("Reading Json Files...");
-            ReadJsonSlots();
+            harmony.PatchAll(typeof(JsonReservedSlotsCore));
         }
 
         public void CreateDefaultJsonSlots()
@@ -77,15 +71,28 @@ namespace JsonReservedSlots
                 return;
             }
 
-            ReservedSlotInfo toolBagInfo = new() { reservedSlotName = "utility_belt", slotPriority = 50, purchasePrice = 150, itemsForSlot = [ new ReservedItemInfo() { itemName = "Belt bag" }] };
+            ReservedSlotInfo toolBagInfo = new() 
+            { 
+                reservedSlotName = "utility_belt", 
+                displayName = "Belt Slot", 
+                slotPriority = 50, 
+                purchasePrice = 150, 
+                itemsForSlot = [ new ReservedItemInfo() { itemName = "Belt bag" }], 
+                equipKeybind = new ReservedKeybindInfo() { defaultBind = "b" }
+            };
 
             string toolBagJson = JsonConvert.SerializeObject(toolBagInfo, Formatting.Indented);
 
             File.WriteAllText(JsonReservedSlotsPath + "\\UtilityBeltSlot.json", toolBagJson);
         }
 
-        public void ReadJsonSlots()
+        [HarmonyPatch(typeof(PreInitSceneScript), "Awake")]
+        [HarmonyPostfix]
+        private static void ReadJsonSlots()
         {
+            if (loadedJsons) return;
+            mls.LogInfo("Reading Json Files...");
+            loadedJsons = true;
             try
             {
                 foreach (string file in Directory.GetFiles(JsonReservedSlotsPath))
@@ -97,8 +104,9 @@ namespace JsonReservedSlots
                         if (slotInfo != null)
                         {
                             if (slotInfo.reservedSlotName.IsNullOrWhiteSpace()) continue;
+                            if (slotInfo.requiredMods.Length > 0 && slotInfo.requiredMods.FirstOrDefault((x) => JCompatabilityHelper.IsLoaded(x)) == null) continue;
                             if (slotInfo.displayName.IsNullOrWhiteSpace()) slotInfo.displayName = Path.GetFileNameWithoutExtension(file);
-                            slotInfo.reservedSlotName = new string(slotInfo.reservedSlotName.ToLower().Replace(' ', '_'));
+                            slotInfo.reservedSlotName = slotInfo.reservedSlotName.ToLower().Replace(' ', '_');
 
                             var itemInfos = slotInfo.itemsForSlot.ToList();
                             itemInfos.RemoveAll((itemInfo) => itemInfo.itemName.IsNullOrWhiteSpace());
